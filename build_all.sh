@@ -4,9 +4,6 @@ echo "=============================="
 echo "Building the acctop command"
 echo "=============================="
 
-# Print out command arguments during execution
-set -x
-
 # Remove the venv if it exists
 echo "=============================="
 echo "Removing the venv if it exists"
@@ -67,7 +64,6 @@ for shell_config in "$HOME/.bashrc" "$HOME/.zshrc"; do
         echo "##Custom commands placed in ~/.bin added to path" >> "$shell_config"
         echo 'export PATH="$PATH:$HOME/.bin"' >> "$shell_config"
         echo "##==========" >> "$shell_config"
-        source "$shell_config"
     fi
 done
 
@@ -78,5 +74,9 @@ rm -rf build/ dist/ __pycache__/ acctop.spec
 
 echo "================================================================"
 echo "Build process completed"
+echo "You will need to reload your shell, e.g. by running the command:"
+echo "source ~./bashrc"
+echo "or if using another shell, (like zshrc) depending on your config"
+echo " "
 echo "to use: try the command acctop from anywhere on the command line"
 echo "================================================================"
