@@ -47,6 +47,15 @@ fi
 echo "=============================="
 echo "Moving the new version of acctop to the .bin directory"
 mv dist/acctop "$HOME/.bin/acctop"
+# Create a README file explaining where acctop came from
+echo "=============================="
+echo "Creating a README file explaining where acctop came from"
+cat <<EOL > "$HOME/.bin/README_acctop.txt"
+acctop is a command-line tool developed by Exeter University for monitoring ACC server usage.
+This tool was built using Python and packaged into an executable using PyInstaller.
+For more information, please contact Paul Bowen p.bowen@exeter.ac.uk
+The repo used to create this is https://github.com/UoE-ACC/acctop
+EOL
 
 # Add .bin directory to PATH in shell configuration files (bashrc and zshrc for common ones)
 echo "=============================="
@@ -54,12 +63,13 @@ echo "Adding .bin directory to PATH in shell configuration files"
 for shell_config in "$HOME/.bashrc" "$HOME/.zshrc"; do
     echo "Adding .bin directory to PATH in $shell_config"
     if [ -f "$shell_config" ]; then
+        echo "==========" >> "$shell_config"
+        echo "Custom commands placed in ~/.bin added to path" >> "$shell_config"
         echo 'export PATH="$PATH:$HOME/.bin"' >> "$shell_config"
+        echo "==========" >> "$shell_config"
         source "$shell_config"
     fi
 done
-
-
 
 # Clean up the build directory
 echo "=============================="
