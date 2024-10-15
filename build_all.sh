@@ -63,10 +63,10 @@ echo "Adding .bin directory to PATH in shell configuration files"
 for shell_config in "$HOME/.bashrc" "$HOME/.zshrc"; do
     echo "Adding .bin directory to PATH in $shell_config"
     if [ -f "$shell_config" ]; then
-        echo "==========" >> "$shell_config"
-        echo "Custom commands placed in ~/.bin added to path" >> "$shell_config"
+        echo "##==========" >> "$shell_config"
+        echo "##Custom commands placed in ~/.bin added to path" >> "$shell_config"
         echo 'export PATH="$PATH:$HOME/.bin"' >> "$shell_config"
-        echo "==========" >> "$shell_config"
+        echo "##==========" >> "$shell_config"
         source "$shell_config"
     fi
 done
