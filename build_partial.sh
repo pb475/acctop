@@ -4,9 +4,6 @@ echo "=============================="
 echo "Building the acctop command"
 echo "=============================="
 
-# Print out command arguments during execution
-set -x
-
 # Remove the venv if it exists
 echo "=============================="
 echo "Removing the venv if it exists"
