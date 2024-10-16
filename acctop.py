@@ -351,6 +351,72 @@ def display_system_info():
     print(f"Kernel Version: {kernel_version}")
     print("")
 
+def display_disk_io():
+    """
+    Display live disk I/O statistics including read and write bytes for each disk.
+    """
+
+    # Print header
+    print(f"{DISK_COLOR}=== Disk I/O ==={RESET_COLOR}")
+
+    # Get disk I/O statistics
+    disk_io = psutil.disk_io_counters(perdisk=True)
+
+    # Column titles
+    coltitle_disk = "Disk"
+    coltitle_readwrite_speed = "Read/Write (MB/s)"
+
+    # Determine the width of each column
+    disk_width = max(max(len(disk) for disk in disk_io.keys()), len(coltitle_disk))
+    max_readwrite_speed_len = len(coltitle_readwrite_speed)+8
+
+    # Header row with colored titles
+    header = (f"{HEADER_COLOR}{coltitle_disk.ljust(disk_width)} | "
+              f"{coltitle_readwrite_speed.ljust(max_readwrite_speed_len)}{RESET_COLOR}")
+    print(header)
+    # Determine the width of the combined tables
+    combined_width = disk_width+max_readwrite_speed_len  # Adding some space between the tables
+    print("-" * combined_width)  # Separator line
+
+    # Store previous I/O stats to calculate speed
+    prev_disk_io = psutil.disk_io_counters(perdisk=True)
+    poll_interval = 0.01  # Polling interval in seconds
+    time.sleep(poll_interval)  # Sleep for 1 second to calculate speed
+    curr_disk_io = psutil.disk_io_counters(perdisk=True)
+
+    # Get the console width
+    terminal_width = os.get_terminal_size().columns
+
+    # Check if the terminal width is sufficient to display tables side by side
+    N = min(terminal_width // combined_width, 10)
+    N = max(N, 1)  # Ensure at least 1 table is displayed
+
+    # Data rows
+    tables = [[] for _ in range(N)]  # Create N empty tables
+    for i, (disk, stats) in enumerate(curr_disk_io.items()):
+        prev_stats = prev_disk_io[disk]
+        read_speed = (1.0 / poll_interval) * (stats.read_bytes - prev_stats.read_bytes) / (1024 ** 2)  # MB/s
+        write_speed = (1.0 / poll_interval) * (stats.write_bytes - prev_stats.write_bytes) / (1024 ** 2)  # MB/s
+        row = f"{disk.ljust(disk_width)} | {read_speed:.2f}/{write_speed:.2f}".ljust(max_readwrite_speed_len)
+        tables[i % N].append(row)
+
+    # Function to print tables side by side
+    def print_tables_side_by_side(tables):
+        max_len = max(len(table) for table in tables)
+        for i in range(max_len):
+            row_parts = []
+            for table in tables:
+                if i < len(table):
+                    row_parts.append(table[i])
+                else:
+                    row_parts.append(" " * len(header))
+            print(" ".join(row_parts))
+
+    # Print tables side by side
+    print_tables_side_by_side(tables)
+    print("")
+
+
 def clear_console():
     """
     Clears the console screen. Works on both Windows and Unix-like systems.
@@ -374,7 +440,9 @@ if __name__ == "__main__":
         parser.add_argument('--show-network', action='store_true', help='Display network usage')
         parser.add_argument('--show-load', action='store_true', help='Display load average')
         parser.add_argument('--show-system', action='store_true', help='Display system info')
+        parser.add_argument('--show-disk-io', action='store_true', help='Display disk I/O statistics')
         parser.add_argument('--show-all', action='store_true', help='Display all optional features')
+        parser.add_argument('--show-most', action='store_true', help='Display all optional features')
         return parser.parse_args()
 
     args = parse_arguments()
@@ -392,6 +460,8 @@ if __name__ == "__main__":
                 display_load_average()  # Load average
             if args.show_system or args.show_all:
                 display_system_info()  # System uptime and kernel version
+            if args.show_disk_io or args.show_all or args.show_most:
+                display_disk_io()
             print(f"{HEADER_COLOR}========================================{RESET_COLOR}")
             print('Press ctrl+c to exit...')
             time.sleep(args.interval)  # Update based on the interval argument

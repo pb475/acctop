@@ -36,6 +36,7 @@ acctop
 - `acctop --show-network`: this will show network info.
 - `acctop --show-load`: this will show network load info.
 - `acctop --show-system`: this will show system info.
+- `acctop --show-most`: this will show the usual info, plus the live disk I/O stats.
 - `acctop --show-all`: this will show all info.
 
 ### Example Output
