@@ -10,6 +10,7 @@ Features:
 - Network Usage: (Optional) Displays network statistics including bytes sent/received and packets sent/received per network interface.
 - Load Average: (Optional) Shows the system load average for the past 1, 5, and 15 minutes.
 - System Info: (Optional) Displays system uptime and kernel version.
+- Disk I/O: (Optional) Displays live disk I/O statistics including read and write bytes for each disk.
 
 The script uses ANSI escape codes to add color to the terminal output, making it easier to read and interpret the data.
 
@@ -26,9 +27,9 @@ Functions:
 - display_network_usage(): Displays network usage statistics with aligned columns and colored headers.
 - display_load_average(): Displays the system load average for the past 1, 5, and 15 minutes.
 - display_system_info(): Displays system uptime and kernel version.
+- display_disk_io(): Displays live disk I/O statistics including read and write bytes for each disk.
 - clear_console(): Clears the terminal screen.
 - parse_arguments(): Parses command-line arguments for optional features and update interval.
-- main(): Main loop that updates the display based on the specified interval and optional features.
 
 Usage:
 Run the script in a terminal to start real-time monitoring. Use command-line arguments to enable optional features and set the update interval. Press Ctrl+C to exit.
@@ -50,6 +51,7 @@ USER_COLOR      = "\033[1;35m"  # Bold Magenta"
 LOAD_COLOR      = "\033[1;35m"  # Bold Magenta"
 INFO_COLOR      = "\033[1;35m"  # Bold Magenta"
 RESET_COLOR     = "\033[0m"     # Reset to default
+lencolors = len(HEADER_COLOR) + len(RESET_COLOR)
 
 # Additional ANSI escape codes for CPU and memory usage bars
 GREEN = "\033[1;32m"
@@ -93,18 +95,45 @@ def create_disk_usage_bar(percentage, bar_length=30):
 
 def display_disk_usage():
     """
-    Displays the disk usage statistics including total, used, and free space
-    in gigabytes, along with a visual usage bar.
+    Displays the disk usage statistics for all mounted disks including total, used,
+    and free space in gigabytes or terabytes, along with a visual usage bar.
     """
 
-    disk_usage = psutil.disk_usage('/')
-    print(f"{DISK_COLOR}=== Disk Usage ==={RESET_COLOR}")
-    usage_percentage = disk_usage.percent
-    print(f"Total: {disk_usage.total / (1024 ** 3):.2f} GB | "
-          f"Used: {disk_usage.used / (1024 ** 3):.2f} GB | "
-          f"Free: {disk_usage.free / (1024 ** 3):.2f} GB | "
-          f"{create_disk_usage_bar(usage_percentage)}")
-    print("")
+    def format_size(size):
+        """Helper function to format the size in GB or TB."""
+        if size >= 1024 ** 4:  # Size in TB
+            return f"{size / (1024 ** 4):.2f} TB"
+        else:  # Size in GB
+            return f"{size / (1024 ** 3):.2f} GB"
+
+    disk_usage_header = f"{DISK_COLOR}=== Disk Usage ==={RESET_COLOR}"
+    partitions = psutil.disk_partitions()
+    table_data = []
+    for partition in partitions:
+        try:
+            disk_usage = psutil.disk_usage(partition.mountpoint)
+            usage_percentage = disk_usage.percent
+            table_data.append([
+                partition.mountpoint,
+                format_size(disk_usage.total),
+                format_size(disk_usage.used),
+                format_size(disk_usage.free),
+                create_disk_usage_bar(usage_percentage)
+            ])
+        except PermissionError:
+            # This can happen on some systems where certain partitions are not accessible
+            table_data.append([
+                partition.mountpoint,
+                "Permission Denied",
+                "Permission Denied",
+                "Permission Denied",
+                "Permission Denied"
+            ])
+
+    headers = ["Mountpoint", "Total", "Used", "Free", "Usage"]
+    colalign = ("left", "right", "right", "right", "left")
+    table = tabulate(table_data, headers=headers, tablefmt="pretty", colalign=colalign)
+    return f"{disk_usage_header}\n" + table + "\n"
 
 def display_memory_usage():
     """
@@ -129,24 +158,17 @@ def display_memory_usage():
 
     memory_info = psutil.virtual_memory()
     swap_info = psutil.swap_memory()
+    # TODO: we could consider displaying the swap usage as well
 
-    # Determine the width of each column
-    total_width = max(len(f"{memory_info.total / (1024 ** 3):.2f} GB"), len(f"{swap_info.total / (1024 ** 3):.2f} GB")) + 2
-    used_width = max(len(f"{memory_info.used / (1024 ** 3):.2f} GB"), len(f"{swap_info.used / (1024 ** 3):.2f} GB")) + 2
-    available_width = len(f"{memory_info.available / (1024 ** 3):.2f} GB") + 2
-    percent_width = max(len(f"{memory_info.percent}%"), len(f"{swap_info.percent}%")) + 2
-
-    # Print Memory Usage
-    print(f"{MEMORY_COLOR}=== Memory Usage ==={RESET_COLOR}")
-    print(f"Total: {f'{memory_info.total / (1024 ** 3):.2f} GB'} | "
-          f"Used: {f'{memory_info.used / (1024 ** 3):.2f} GB'} | "
-          f"Available: {f'{memory_info.available / (1024 ** 3):.2f} GB'} | "
-          f"{f'{create_memory_usage_bar(memory_info.percent)}'}")
-
-    # Print bars
-    # print(f"{create_memory_usage_bar(memory_info.percent)}")
-    # print(f"{create_memory_usage_bar(swap_info.percent)}")
-    print("")
+    # get Memory Usage in a nice format
+    memory_usage_header = f"{MEMORY_COLOR}=== Memory Usage ==={RESET_COLOR}"
+    memory_usage_info = (
+        f"Total: {f'{memory_info.total / (1024 ** 3):.2f} GB'} | "
+        f"Used: {f'{memory_info.used / (1024 ** 3):.2f} GB'} | "
+        f"Available: {f'{memory_info.available / (1024 ** 3):.2f} GB'} | "
+        f"{f'{create_memory_usage_bar(memory_info.percent)}'}"
+    )
+    return f"{memory_usage_header}\n{memory_usage_info}\n"
 
 def get_cpu_columns(column_width):
     """
@@ -168,18 +190,9 @@ def get_cpu_columns(column_width):
 
     try:
         terminal_width = os.get_terminal_size().columns
-        if terminal_width < column_width*2:
-            return 1  # Narrow terminal, use 1 column
-        elif terminal_width < column_width*3:
-            return 2  # Medium terminal, use 2 columns
-        elif terminal_width < column_width*4:
-            return 3  # Wide terminal, use 3 columns
-        elif terminal_width < column_width*5:
-            return 4  # Extra wide terminal, use 4 columns
-        else:
-            return 5  # Extra extra wide terminal, use 5 columns
+        return terminal_width // column_width
     except OSError:
-        return 2  # Default to 2 columns if terminal size cannot be determined
+        return 1  # Default to 2 columns if terminal size cannot be determined
 
 def display_cpu_usage_in_columns():
     """
@@ -190,8 +203,7 @@ def display_cpu_usage_in_columns():
     CPU usage at the end.
     """
 
-
-    print(f"{CPU_COLOR}=== CPU Usage ==={RESET_COLOR}")
+    cpu_usage_header = f"{CPU_COLOR}=== CPU Usage ==={RESET_COLOR}"
 
     cpu_percentages = psutil.cpu_percent(percpu=True)
 
@@ -201,10 +213,10 @@ def display_cpu_usage_in_columns():
     core_label_width = len("Core ")  # Default width for the core label
     core_number_width = len(str(num_cores))  # Width of the core number
     core_joined_label_width = core_label_width+core_number_width  # Width of the core label with number
-    max_bar_length = max(len(create_cpu_usage_bar(p).rstrip()) for p in cpu_percentages)
+    max_bar_length = max(len(create_cpu_usage_bar(p).rstrip()) for p in cpu_percentages)-lencolors # Max bar length for the bars, the minus lencolors is to remove the html color codes
 
     # Total column width (bar + percentage + spacing)
-    column_width = core_joined_label_width + max_bar_length + len(":   ") # Extra space for padding to match with the bar padding in loop below
+    column_width = core_joined_label_width + max_bar_length + len(": ") # Extra space for padding to match with the bar padding in loop below
 
     # Determine the number of columns based on terminal width and the column display width
     columns = get_cpu_columns(column_width)
@@ -214,21 +226,22 @@ def display_cpu_usage_in_columns():
 
     # Prepare the data to be displayed in rows
     row_data = []
+    cpu_usage_rows = ""
     for i, percentage in enumerate(cpu_percentages):
         bar = create_cpu_usage_bar(percentage)
-        entry = f"Core {i:<{core_number_width}}: {bar}  "
+        entry = f"Core {i:>{core_number_width}}: {bar}  "
         row_data.append(entry)
 
-        # When we have enough data for a full row or it's the last core, print the row
+        # When we have enough data for a full row or it's the last core, append the row
         if (i + 1) % columns == 0 or i == len(cpu_percentages) - 1:
             # Pad the row if necessary (if not enough columns are filled)
             while len(row_data) < columns:
                 row_data.append(" " * column_width)  # Add empty string to fill the columns
-            print(row_format.format(*row_data))
+            cpu_usage_rows += row_format.format(*row_data) + "\n"
             row_data = []  # Reset for the next row
     average_cpu_usage = sum(cpu_percentages) / len(cpu_percentages)
-    print(f"Average CPU Usage: {get_usage_color(average_cpu_usage)}{average_cpu_usage:.2f}%{RESET_COLOR}")
-    print("")
+    average_cpu_usage_string = f"Average CPU Usage: {create_cpu_usage_bar(average_cpu_usage)}"
+    return f'{cpu_usage_header}\n{cpu_usage_rows}{average_cpu_usage_string}\n'
 
 def display_user_usage():
     """
@@ -238,7 +251,7 @@ def display_user_usage():
     specified CPU and memory usage thresholds and displays the results in a formatted table.
     """
 
-    print(f"{USER_COLOR}=== Cumulative User CPU, Memory Usage, and Process Count ==={RESET_COLOR}")
+    cumulative_user_usage_header = f"{USER_COLOR}=== Cumulative User CPU, Memory Usage, and Process Count ==={RESET_COLOR}"
 
     # Define thresholds
     cpu_threshold = 0.01  # CPU usage threshold in percent
@@ -279,10 +292,10 @@ def display_user_usage():
 
     # Display the filtered data in a table
     if filtered_user_data:
-        print(tabulate(filtered_user_data, headers='keys', tablefmt='pretty'))
+        colalign = ("left", "right", "right", "right")
+        return f'{cumulative_user_usage_header}\n' + tabulate(filtered_user_data, headers='keys', tablefmt="pretty", colalign=colalign) + "\n"
     else:
-        print("No users exceed the specified thresholds.")
-    print("")
+        return "No users exceed the specified thresholds.\n"
 
 def display_network_usage():
     """
@@ -290,7 +303,7 @@ def display_network_usage():
     packets sent, and packets received for each network interface.
     """
 
-    print(f"{NETWORK_COLOR}=== Network Usage ==={RESET_COLOR}")
+    network_usage_header = f"{NETWORK_COLOR}=== Network Usage ==={RESET_COLOR}"
 
     net_io = psutil.net_io_counters(pernic=True) # Get network I/O statistics per network interface
 
@@ -301,63 +314,53 @@ def display_network_usage():
     coltitle_packets_sent = "Packets Sent"
     coltitle_packets_recv = "Packets Received"
 
-    # Determine the width of each column
-    iface_width = max(max(len(iface) for iface in net_io.keys()), len(coltitle_interface)) + 2
-    max_megabytes_sent_len = max(len(coltitle_megabytes_sent), len(str(max(stats.bytes_sent / (1024 ** 2) for stats in net_io.values()))))
-    max_megabytes_recv_len = max(len(coltitle_megabytes_recv), len(str(max(stats.bytes_recv / (1024 ** 2) for stats in net_io.values()))))
-    max_packets_sent_len = max(len(coltitle_packets_sent), len(str(max(stats.packets_sent for stats in net_io.values()))))
-    max_packets_recv_len = max(len(coltitle_packets_recv), len(str(max(stats.packets_recv for stats in net_io.values()))))
-
-    # Header row with colored titles
-    header = (f"{HEADER_COLOR}{coltitle_interface.ljust(iface_width)} | "
-              f"{coltitle_megabytes_sent.rjust(max_megabytes_sent_len)} | "
-              f"{coltitle_megabytes_recv.rjust(max_megabytes_recv_len)} | "
-              f"{coltitle_packets_sent.rjust(max_packets_sent_len)} | "
-              f"{coltitle_packets_recv.rjust(max_packets_recv_len)}{RESET_COLOR}")
-    print(header)
-    print("-" * len(header)) # Separator line
-
-    # Data rows
+    table_data = []
     for interface, stats in net_io.items():
-        print(f"{interface.ljust(iface_width)} | "
-              f"{str(int(stats.bytes_sent / (1024 ** 2))).rjust(max_megabytes_sent_len)} | "
-              f"{str(int(stats.bytes_recv / (1024 ** 2))).rjust(max_megabytes_recv_len)} | "
-              f"{str(stats.packets_sent).rjust(max_packets_sent_len)} | "
-              f"{str(stats.packets_recv).rjust(max_packets_recv_len)}")
-    print("")
+        row = [
+            interface,
+            f"{stats.bytes_sent / (1024 ** 2):.2f}",
+            f"{stats.bytes_recv / (1024 ** 2):.2f}",
+            stats.packets_sent,
+            stats.packets_recv
+        ]
+        table_data.append(row)
+
+    headers = [coltitle_interface, coltitle_megabytes_sent, coltitle_megabytes_recv, coltitle_packets_sent, coltitle_packets_recv]
+    colalign = ("left", "right", "right", "right", "right")
+    table = tabulate(table_data, headers=headers, tablefmt="pretty", colalign=colalign)
+    return f"{network_usage_header}\n{table}\n"
 
 def display_load_average():
     """
     Display the system load averages for the past 1, 5, and 15 minutes.
     """
 
-    print(f"{LOAD_COLOR}=== Load Average ==={RESET_COLOR}")
+    load_average_header = f"{LOAD_COLOR}=== Load Average ==={RESET_COLOR}"
+
     load_avg = os.getloadavg()  # Returns a tuple of (1min, 5min, 15min load averages)
-    print(f"1 min: {load_avg[0]:.2f} | "
-          f"5 min: {load_avg[1]:.2f} | "
-          f"15 min: {load_avg[2]:.2f}")
-    print("")
+    load_averages = (f"1 min: {load_avg[0]:.2f} | "
+                    f"5 min: {load_avg[1]:.2f} | "
+                    f"15 min: {load_avg[2]:.2f}")
+    return f"{load_average_header}\n{load_averages}\n"
 
 def display_system_info():
     """
     Displays system information including uptime and kernel version.
     """
 
-    print(f"{INFO_COLOR}=== System Info ==={RESET_COLOR}")
+    system_info_header = f"{INFO_COLOR}=== System Info ==={RESET_COLOR}"
     uptime_seconds = time.time() - psutil.boot_time()
     uptime = time.strftime("%H:%M:%S", time.gmtime(uptime_seconds))
     kernel_version = os.uname().release
-    print(f"Uptime: {uptime}")
-    print(f"Kernel Version: {kernel_version}")
-    print("")
+    return f"{system_info_header}\nUptime: {uptime}\nKernel Version: {kernel_version}\n"
 
 def display_disk_io():
     """
     Display live disk I/O statistics including read and write bytes for each disk.
     """
 
-    # Print header
-    print(f"{DISK_COLOR}=== Disk I/O ==={RESET_COLOR}")
+    # Define header
+    disk_io_header = (f"{DISK_COLOR}=== Disk I/O ==={RESET_COLOR}")
 
     # Get disk I/O statistics
     disk_io = psutil.disk_io_counters(perdisk=True)
@@ -373,10 +376,9 @@ def display_disk_io():
     # Header row with colored titles
     header = (f"{HEADER_COLOR}{coltitle_disk.ljust(disk_width)} | "
               f"{coltitle_readwrite_speed.ljust(max_readwrite_speed_len)}{RESET_COLOR}")
-    print(header)
+
     # Determine the width of the combined tables
     combined_width = disk_width+max_readwrite_speed_len  # Adding some space between the tables
-    print("-" * combined_width)  # Separator line
 
     # Store previous I/O stats to calculate speed
     prev_disk_io = psutil.disk_io_counters(perdisk=True)
@@ -400,9 +402,10 @@ def display_disk_io():
         row = f"{disk.ljust(disk_width)} | {read_speed:.2f}/{write_speed:.2f}".ljust(max_readwrite_speed_len)
         tables[i % N].append(row)
 
-    # Function to print tables side by side
-    def print_tables_side_by_side(tables):
+    # Function to return tables side by side
+    def tables_side_by_side(tables):
         max_len = max(len(table) for table in tables)
+        disk_io_rows = []
         for i in range(max_len):
             row_parts = []
             for table in tables:
@@ -410,12 +413,11 @@ def display_disk_io():
                     row_parts.append(table[i])
                 else:
                     row_parts.append(" " * len(header))
-            print(" ".join(row_parts))
+            row_parts.append(" " * len(header))
+        disk_io_rows.append(" ".join(row_parts))
+        return "\n".join(disk_io_rows)
 
-    # Print tables side by side
-    print_tables_side_by_side(tables)
-    print("")
-
+    return f'{disk_io_header}\n' + header +'\n'+ tables_side_by_side(tables)
 
 def clear_console():
     """
@@ -436,7 +438,7 @@ if __name__ == "__main__":
 
         # Parse command-line arguments
         parser = argparse.ArgumentParser(description="Real-Time System Resource Monitoring Tool")
-        parser.add_argument('--interval', type=float, default=2.5, help='Update interval in seconds (default: 2.5)')
+        parser.add_argument('--interval', type=float, default=5, help='Update interval in seconds (default: 5)')
         parser.add_argument('--show-network', action='store_true', help='Display network usage')
         parser.add_argument('--show-load', action='store_true', help='Display load average')
         parser.add_argument('--show-system', action='store_true', help='Display system info')
@@ -447,23 +449,33 @@ if __name__ == "__main__":
 
     args = parse_arguments()
     try:
+        clear_console()  # Clear the screen
         while True:
-            clear_console()  # Clear the screen
-            print(f"{HEADER_COLOR}=== Real-Time System Resource Usage for {os.uname().nodename.capitalize()} ==={RESET_COLOR}")
-            display_disk_usage()  # Disk usage with a bar
-            display_memory_usage()  # Memory usage with a bar
-            display_cpu_usage_in_columns()  # Dynamically set number of columns based on terminal width
-            display_user_usage()  # Cumulative user usage with CPU normalized by number of cores
+
+            # Create the output to be displayed
+            output = []
+            output.append(f"{HEADER_COLOR}=== Real-Time System Resource Usage for {os.uname().nodename.capitalize()} ==={RESET_COLOR}")
+            output.append(display_disk_usage())  # Disk usage with a bar
+            output.append(display_memory_usage())  # Memory usage with a bar
+            output.append(display_cpu_usage_in_columns())  # Dynamically set number of columns based on terminal width
+            output.append(display_user_usage())  # Cumulative user usage with CPU normalized by number of cores
             if args.show_network or args.show_all:
-                display_network_usage()  # Network usage with aligned columns and colored headers
+                output.append(display_network_usage())  # Network usage with aligned columns and colored headers
             if args.show_load or args.show_all:
-                display_load_average()  # Load average
+                output.append(display_load_average())  # Load average
             if args.show_system or args.show_all:
-                display_system_info()  # System uptime and kernel version
+                output.append(display_system_info())  # System uptime and kernel version
             if args.show_disk_io or args.show_all or args.show_most:
-                display_disk_io()
-            print(f"{HEADER_COLOR}========================================{RESET_COLOR}")
-            print('Press ctrl+c to exit...')
+                output.append(display_disk_io())
+            output.append(f"{HEADER_COLOR}========================================{RESET_COLOR}")
+            output.append('Press ctrl+c to exit...')
+
+            # Print the output all at once
+            print("\n".join(output))
+
+            # Wait for the specified interval and clear the console
             time.sleep(args.interval)  # Update based on the interval argument
+            clear_console()  # Clear the screen
+
     except KeyboardInterrupt:
         print("\nExiting real-time monitoring.")
