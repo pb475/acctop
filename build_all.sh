@@ -75,7 +75,7 @@ rm -rf build/ dist/ __pycache__/ acctop.spec
 echo "================================================================"
 echo "Build process completed"
 echo "You will need to reload your shell, e.g. by running the command:"
-echo "source ~./bashrc"
+echo "source ~/.bashrc"
 echo "or if using another shell, (like zshrc) depending on your config"
 echo " "
 echo "to use: try the command acctop from anywhere on the command line"
