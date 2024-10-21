@@ -216,7 +216,7 @@ def display_cpu_usage_in_columns():
     max_bar_length = max(len(create_cpu_usage_bar(p).rstrip()) for p in cpu_percentages)-lencolors # Max bar length for the bars, the minus lencolors is to remove the html color codes
 
     # Total column width (bar + percentage + spacing)
-    column_width = core_joined_label_width + max_bar_length + len(": ") + 3 # Extra space for padding to match with the bar padding in loop below
+    column_width = core_joined_label_width + max_bar_length + len(": ") + 6 # Extra space for padding to match with the bar padding in loop below
 
     # Determine the number of columns based on terminal width and the column display width
     columns = get_cpu_columns(column_width)
